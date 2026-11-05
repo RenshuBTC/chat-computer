@@ -586,6 +586,58 @@ function Test-OwnKeyApproved {
     return (Test-BytesContain ([byte[]](Get-Prop $db 'Bytes')) ([byte[]]$Cert.RawData))
 }
 
+# ------------------------------------------------------------------ ClaudeOS, out of the power-on menu
+# ClaudeOS (Chat Computer's name until 2026-10-19) left entries in the power-on menu that its owner no longer wants
+# ("i no longer want claudeOS, i dont know why it still is an option when i restart my computer, remove that, i only
+# want chat computer"): its own system's (\EFI\claudeos-own), its installers' (\EFI\claudeos-setup,
+# \EFI\chatcomputer-setup), and the Ubuntu-based one's (\EFI\ubuntu, Ubuntu's boot loader, shown as "Ubuntu"), that
+# one only when its mark is on Windows' start-up partition (\EFI\claudeos\installed-*, or \EFI\chatcomputer\ from
+# after the name changed), so a Ubuntu of the person's own is left alone. Only the menu's entries go: their files
+# and partitions stay as they are, with whatever is in them.
+function Test-OldClaudeOsMark {
+    # Whether Windows' start-up partition has the Ubuntu-based ClaudeOS's mark. $false when it can't be read.
+    try {
+        $esp = Get-WindowsEsp
+        if (-not $esp) { return $false }
+        $m = Mount-EspPartition $esp
+        try {
+            foreach ($d in @('claudeos', 'chatcomputer')) {
+                $dir = [IO.Path]::Combine($m.Root, 'EFI', $d)
+                if ((Test-Path -LiteralPath $dir) -and
+                    @(Get-ChildItem -LiteralPath $dir -Filter 'installed-*' -ErrorAction SilentlyContinue).Count -gt 0) { return $true }
+            }
+            return $false
+        } finally {
+            Dismount-EspPartition $m
+        }
+    } catch {
+        Write-SetupLog ('Looking for ClaudeOS''s mark: ' + $_.Exception.Message)
+        return $false
+    }
+}
+
+function Select-OldClaudeOsEntries {
+    # Of the power-on menu's entries, ClaudeOS's: Ubuntu's boot loader's only with $Ubuntu (its mark is there).
+    param([object[]]$Entries = @(), [bool]$Ubuntu)
+    return , @($Entries | Where-Object {
+            $_.Id -ne '{fwbootmgr}' -and $_.Id -ne '{bootmgr}' -and (
+                [string]$_.Path -match '(?i)^\\EFI\\(claudeos-own|claudeos-setup|chatcomputer-setup)\\' -or
+                ($Ubuntu -and [string]$_.Path -match '(?i)^\\EFI\\ubuntu\\')) })
+}
+
+function Remove-OldClaudeOsEntries {
+    # Takes ClaudeOS's entries out of the power-on menu, and puts Windows first in it. Returns how many went.
+    $old = Select-OldClaudeOsEntries -Entries (Get-FirmwareBootEntries) -Ubuntu (Test-OldClaudeOsMark)
+    if ($old.Count -eq 0) { return 0 }
+    if (Get-BitLockerOn) {
+        # (Changing the power-on menu can make BitLocker ask for its recovery key: paused for one restart.)
+        try { Suspend-BitLocker -MountPoint 'C:' -RebootCount 1 -ErrorAction Stop | Out-Null } catch { Write-SetupLog ('Suspend-BitLocker: ' + $_.Exception.Message) }
+    }
+    foreach ($e in $old) { Invoke-Bcdedit @('/delete', $e.Id) }
+    Set-StartsFirst '{bootmgr}'
+    return $old.Count
+}
+
 # ------------------------------------------------------------------ the start-up partition and the power-on menu
 function Get-OwnBootEntries {
     return , @(Get-FirmwareBootEntries | Where-Object { $_.Path -match ('(?i)^\\EFI\\' + $Script:OwnDir + '\\') -and $_.Id -ne '{fwbootmgr}' })
@@ -864,6 +916,9 @@ function Start-OwnSystem {
     }
     $id = Get-OwnBootEntry
     Write-Good 'Put on the partition this PC starts from, next to Windows'' own files (which stay as they are).'
+    if ((Remove-OldClaudeOsEntries) -gt 0) {
+        Write-Good 'ClaudeOS is out of the boot menu, so only Windows and Chat Computer are there. (Its files stay on the drive.)'
+    }
     if ($installed.Meta) {
         Write-Line 'It answers with Meta''s Muse Spark, which needs a network cable (Wi-Fi isn''t supported there yet).'
     } elseif ($model) {

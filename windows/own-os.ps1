@@ -13,6 +13,8 @@ scratch) on this PC, without a USB stick:
      when this runs again) and its log file (read back when this next runs, to last-run.txt in its work folder, and
      said in a line) on the partition the PC starts from (\EFI\chatcomputer-own), next to Windows' own files,
      and keeps "Chat Computer (own system)" in the power-on menu (the PC's boot menu), to choose whenever you like,
+     taking ClaudeOS's old entries out of it (its own system's, its installers', and "Ubuntu" when that's the
+     Ubuntu-based ClaudeOS: its mark is on the start-up partition), with Windows first; their files stay,
   5. restarts into it when you press Enter (closing the window stays in Windows). With no model on the PC yet, it
      starts all the same and says how to get one.
 Windows' permission, then Enter: nothing else is asked. With Secure Boot on and no key the PC trusts (it reuses

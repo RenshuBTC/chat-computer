@@ -512,7 +512,9 @@ system. Nothing else is asked, and no USB stick is needed.
 5. It keeps "Chat Computer (own system)" in the power-on menu (the PC's boot menu, often F12, F11, F8 or Esc as
    it starts), to choose whenever you like, and restarts into it when Enter is pressed (closing the window stays in
    Windows). The restart after that starts Windows. Double-clicking it again puts the newest version from the folder
-   there and starts it.
+   there and starts it. ClaudeOS's old entries (Chat Computer's name until 2026-10-19) leave the menu, with Windows
+   first: its own system's, its installers', and "Ubuntu" when that's the Ubuntu-based ClaudeOS (its mark,
+   `\EFI\claudeos\installed-*`, is on the start-up partition). Their files and partitions stay as they are.
 
 With Secure Boot on and no key the PC trusts yet, the PC first has to trust Chat Computer's key. That takes one
 approval in the PC's setup screen: Secure Boot (Secure Boot Mode: Custom), then Key Management, then Authorized
