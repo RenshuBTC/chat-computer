@@ -168,6 +168,7 @@ if ([Environment]::OSVersion.Platform -eq [PlatformID]::Win32NT) {
             catch { Write-Host ('short path: Remove-Item -Recurse failed here: ' + $_.Exception.Message) }
             # Setup spells %TEMP% out at the start.
             $savedTmp = $env:TMP
+            $env:TEMP = $short
             $env:TMP = $short
             Use-LongTempPath
             Assert-Equal $long.ToLowerInvariant() $env:TEMP.ToLowerInvariant() 'short path: %TEMP% spelled out'

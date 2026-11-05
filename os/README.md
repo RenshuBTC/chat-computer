@@ -485,20 +485,21 @@ the italic font file out.
 
 ## Starting it on a PC
 
-On a Windows PC, double-click `windows\Chat Computer Own System.cmd` (`windows/own-os.ps1`): one double-click, no
-questions (Windows asks for permission, as for any change to how the PC starts). No USB stick is needed.
+On a Windows PC, double-click `windows\Chat Computer Own System.cmd` (`windows/own-os.ps1`), say yes to Windows'
+permission (as for any change to how the PC starts) and press Enter: the PC restarts into Chat Computer's own
+system. Nothing else is asked, and no USB stick is needed.
 
 1. It checks the PC (read-only) and saves a list of its parts in `%LOCALAPPDATA%\ChatComputer\own-os\pc.txt`, so
    drivers can be written for exactly those chips.
 2. It signs `release/chatcomputer.efi` with a key that Windows makes on that PC and won't let be copied off: the one
    the PC's Secure Boot already trusts, where there is one, the key it made for ClaudeOS (Chat Computer's name until
    2026-10-19) too, so a PC that approved that one starts Chat Computer with nothing more to approve.
-3. It says which model the own system will answer with: the one Chat Computer's app got ready on the PC (install
-   the app from chatcomputer.ai/get first; it gets its model by itself), or Meta's Muse Spark. With no model of the
-   app's yet, it asks for a key for Meta's Model API (from dev.meta.ai; typed out of sight, never logged). The key is
-   kept in `settings.txt` as `meta-api-key`, and Muse Spark then answers over the internet, which needs a network
-   cable on the PC, since Wi-Fi isn't supported yet. A key there comes first, as the kernel takes it. With neither,
-   it opens chatcomputer.ai/get and doesn't restart.
+3. It says which model the own system will answer with: the one Chat Computer's app got ready on the PC (the app,
+   from chatcomputer.ai/get, gets its model by itself). With no model on the PC yet, the own system starts all the
+   same and says how to get one. Meta's Muse Spark is optional: `own-os.ps1 -Meta` asks for a key for Meta's Model
+   API (from dev.meta.ai; typed out of sight, never logged) and keeps it in `settings.txt` as `meta-api-key`
+   (`-Meta` again with no key takes it off). Muse Spark then answers over the internet, which needs a network cable
+   on the PC, since Wi-Fi isn't supported yet; a key there comes first, as the kernel takes it.
 4. It puts the signed file in `\EFI\chatcomputer-own` on the partition the PC starts from,
    next to Windows' own files, with `settings.txt` (how far the PC's clock is from UTC, as Windows keeps that
    clock in local time, and the memory and log files' ids; a model's file named there by hand, `model = ...`, and
@@ -509,7 +510,7 @@ questions (Windows asks for permission, as for any change to how the PC starts).
    in `%LOCALAPPDATA%\ChatComputer\own-os`, and says in a line how that run went: why it stopped, if it did, or the
    last step of a start that didn't finish.
 5. It keeps "Chat Computer (own system)" in the power-on menu (the PC's boot menu, often F12, F11, F8 or Esc as
-   it starts), to choose whenever you like, and restarts into it after a 10-second countdown (any key stays in
+   it starts), to choose whenever you like, and restarts into it when Enter is pressed (closing the window stays in
    Windows). The restart after that starts Windows. Double-clicking it again puts the newest version from the folder
    there and starts it.
 
@@ -518,8 +519,10 @@ approval in the PC's setup screen: Secure Boot (Secure Boot Mode: Custom), then 
 Signatures (db), then Append `ChatComputer.cer`, which setup also puts at the top of the start-up partition, the
 first list of files the setup screen shows. Setup asks nothing: it shows the steps in the words of the
 motherboard's maker's setup screen (MSI's, Gigabyte's, or the usual ones), and Enter restarts into the setup
-screen. From then on, "Chat Computer (own system)" in the boot menu starts it, with Secure Boot still on. A PC that
-can't add a key can have Secure Boot turned off there instead; the steps say so.
+screen. From then on, Enter in setup or "Chat Computer (own system)" in the boot menu starts it, with Secure Boot
+still on. A PC that can't add a key can have Secure Boot turned off there instead; the steps say so. Updating or
+resetting the PC's firmware settings can clear the keys approved there; setup then says so, and shows the steps
+again.
 
 Any USB keyboard works, plugged into the PC or into a hub (a monitor's or a dock's), and so do most
 laptops' built-in keyboards. A keyboard that only connects by Bluetooth needs its cable for now:

@@ -149,10 +149,10 @@ function Read-OwnSettings {
 }
 
 function Read-OwnMetaKey {
-    # A key for Meta's Model API, pasted by the person: not shown as it's typed, never logged. '' for none.
+    # A key for Meta's Model API, pasted by the person (with -Meta): not shown as it's typed, never logged. '' for none.
     Clear-OwnKeys
     for ($attempt = 0; $attempt -lt 2; $attempt++) {
-        $secure = Read-Host -AsSecureString 'Paste the key and press Enter (or just press Enter to get the app''s model instead)'
+        $secure = Read-Host -AsSecureString 'Paste your key for Meta''s Model API and press Enter (just Enter: stop using Meta''s model)'
         $bstr = [Runtime.InteropServices.Marshal]::SecureStringToBSTR($secure)
         try { $key = [Runtime.InteropServices.Marshal]::PtrToStringBSTR($bstr) } finally { [Runtime.InteropServices.Marshal]::ZeroFreeBSTR($bstr) }
         $key = ([string]$key).Trim()
@@ -617,10 +617,11 @@ function Assert-OwnRoom {
 function Install-OwnFiles {
     # The signed start-up file, the key's certificate, the settings and the memory file, in \EFI\chatcomputer-own on
     # the partition Windows starts from. The settings are written anew (a model named in them by hand is kept; an
-    # older setup's Claude API key isn't; Meta's key and model are, or the key pasted now, $MetaKey). Returns whether
-    # there's a memory file (Memory), and whether the settings have a key for Meta's Model API (Meta).
+    # older setup's Claude API key isn't; Meta's key and model are, or the key pasted now, $MetaKey, unless
+    # -DropMetaKey takes it off). Returns whether there's a memory file (Memory), and whether the settings have a key
+    # for Meta's Model API (Meta).
     param([Parameter(Mandatory = $true)][string]$Signed, [Parameter(Mandatory = $true)][string]$Certificate,
-          [AllowEmptyString()][string]$MetaKey = '')
+          [AllowEmptyString()][string]$MetaKey = '', [switch]$DropMetaKey)
     $esp = Get-WindowsEsp
     if (-not $esp) { throw 'Windows could not find the partition this PC starts from.' }
     $m = Mount-EspPartition $esp
@@ -642,7 +643,7 @@ function Install-OwnFiles {
         $memoryId = Install-OwnMemory -Dir $dir -Root $m.Root -Id (Get-OwnSettingsMemoryId $before)
         $logId = Install-OwnLog -Dir $dir -Root $m.Root -Id (Get-OwnSettingsMemoryId $before -Name 'log-id')
         $key = $MetaKey
-        if (-not $key) { $key = Get-OwnSettingsValue $before 'meta-api-key' }
+        if (-not $key -and -not $DropMetaKey) { $key = Get-OwnSettingsValue $before 'meta-api-key' }
         $text = New-OwnSettingsText -Model $model -ClockOffsetMinutes (Get-ClockOffsetMinutes) -MemoryId $memoryId `
             -LogId $logId -Cores (Get-OwnSettingsCores $before) -MetaKey $key -MetaModel (Get-OwnSettingsValue $before 'meta-model')
         [IO.File]::WriteAllText($settings, $text, [Text.Encoding]::ASCII)
@@ -785,132 +786,120 @@ function Start-OwnSystem {
         [Parameter(Mandatory = $true)][string]$WorkDir,
         [switch]$Unattended,
         [switch]$NoRestart,
+        [switch]$Meta,
         [string]$Out
     )
-    Write-Step 'Checking this PC'
+    # (As ClaudeOS's own system was, its owner asked: "press yes/enter in 1-2 times and it immediately restarts to
+    # the OS", and "meta is just a way for me to enter the hackathon, it shouldnt require a meta key to start, its
+    # just an optional ai model to use if i wanted to use". So: Windows' permission, then Enter, and it restarts into
+    # it, with nothing asked on the way; a key for Meta only with -Meta. What it does is said in a few lines, and the
+    # rest is in its log.)
+    Write-Step 'Getting Chat Computer ready'
     if ((Get-FirmwareType) -eq 'Legacy') {
         throw 'This PC starts in the old BIOS mode, and Chat Computer needs UEFI. Nothing was changed.'
     }
-    Write-Good 'Starts in UEFI mode.'
     $last = Read-OwnLastRun -WorkDir $WorkDir
     if ($last) {
         Write-Line $last.Summary
-        Write-Line ('Its whole log is in ' + $last.Path + '.')
+        Write-SetupLog ('Its whole log: ' + $last.Path)
     }
     $release = Get-OwnRelease -RepoRoot $RepoRoot
     $sb = Get-SecureBootState
-    if ($sb -eq $true) { Write-Line 'Secure Boot is on.' } elseif ($sb -eq $false) { Write-Line 'Secure Boot is off.' }
     $parts = Save-PcParts -Path (Join-Path $WorkDir 'pc.txt') -SecureBoot $sb
-    Write-Line ('A list of this PC''s parts is in ' + $parts + ', so Chat Computer''s drivers can be written for them.')
+    Write-SetupLog ('This PC''s parts, for writing its drivers: ' + $parts)
 
-    Write-Step 'Signing Chat Computer with this PC''s own key'
+    # The key: one this PC's Secure Boot already trusts (the one it approved for ClaudeOS, say), so it starts with
+    # nothing to approve; else Chat Computer's own; else a new one.
+    $keys = Get-OwnKeys
     $trusted = $null
     if ($sb -eq $true) { $trusted = { param($k) Test-OwnKeyApproved -Cert $k } }
-    $cert = Select-OwnKey -Keys (Get-OwnKeys) -Trusted $trusted
-    if ($cert -and [string](Get-Prop $cert 'FriendlyName') -eq $Script:OldOwnKeyName) {
-        Write-Good 'Using the key this PC made for ClaudeOS, which its Secure Boot already trusts.'
-    } elseif ($cert) {
-        Write-Line 'Using the key made on this PC for signing Chat Computer.'
-    } else {
-        $cert = New-OwnKey
-        Write-Good 'Made a key for signing Chat Computer. Windows keeps it on this PC and won''t let it be copied off.'
-    }
+    $cert = Select-OwnKey -Keys $keys -Trusted $trusted
+    if (-not $cert) { $cert = New-OwnKey }
     $signed = Join-Path $WorkDir $Script:OwnFile
     $cer = Join-Path $WorkDir $Script:OwnCert
     New-OwnSignedFile -Release $release -Destination $signed -Cert $cert
     [IO.File]::WriteAllBytes($cer, [byte[]]$cert.RawData)
-    Write-Good 'Signed.'
     if ($Out) {
         if (-not (Test-Path -LiteralPath $Out)) { New-Item -ItemType Directory -Path $Out -Force | Out-Null }
         Copy-Item -LiteralPath $signed -Destination $Out -Force
         Copy-Item -LiteralPath $cer -Destination $Out -Force
     }
-
-    Write-Step 'Its model'
-    $model = Find-OwnModel
-    $metaKey = ''
-    # (A key for Meta's Model API in the settings comes first, as the kernel takes it: Muse Spark answers then.)
-    if (Get-OwnSettingsValue (Read-OwnSettings) 'meta-api-key') {
-        Write-Good 'It answers with Meta''s Muse Spark, over the internet, with the key for Meta''s Model API in its settings.'
-        Write-Line 'That needs a network cable on this PC (or a USB network adapter, or an Android phone''s USB tethering):'
-        Write-Line 'Wi-Fi isn''t supported yet. What you type goes to Meta.'
-        if ($model) {
-            Write-Line ('For ' + $model.Label + ', the model on this PC, instead: run this once with -Remove (which takes the')
-            Write-Line 'key off with the rest), then again.'
-        }
-    } elseif ($model) {
-        Write-Good ('It answers with ' + $model.Label + ' (' + (Format-Size $model.Bytes) + '), the model Chat Computer''s app got ready on this PC.')
-        Write-Line 'It runs on the PC itself, with no account and nothing to pay: nothing you type leaves it. Starting up, it'
-        Write-Line 'reads the model into memory, which takes a moment.'
-    } else {
-        Write-Warn 'Chat Computer''s app hasn''t got its model ready on this PC yet. Open the app once (it gets its model by'
-        Write-Warn 'itself, free); Chat Computer''s own system finds it when it starts.'
-        Write-Line 'Or it can answer with Meta''s Muse Spark, over the internet: that needs a key for Meta''s Model API (from'
-        Write-Line 'dev.meta.ai) and a network cable on this PC (Wi-Fi isn''t supported yet), and what you type goes to Meta. The'
-        Write-Line 'key is kept in its settings on the start-up partition, where anyone who can read that partition can read it.'
-        if (-not $Unattended) { $metaKey = Read-OwnMetaKey }
-        if ($metaKey) { Write-Good 'It answers with Meta''s Muse Spark.' }
-    }
-
     $approved = $null
     if ($sb -eq $true) { $approved = Test-OwnKeyApproved -Cert $cert }
     $setupScreen = ($sb -eq $true -and $approved -ne $true)
-    $bitlocker = $setupScreen -and (Get-BitLockerOn)
-    if ($approved -eq $true) { Write-Good 'This PC already trusts Chat Computer''s key.' }
-
-    # (One double-click does it all, its owner asked: "make it easier to work with a single click". What changes is
-    # said as it's done, with no question before it; the restart can still be stopped, with any key.)
-    Write-Step 'Putting it on this PC'
-    Write-Line '  * Its start-up file (signed with this PC''s key), the key''s certificate, its settings (how far this PC''s'
-    Write-Line '    clock is from UTC), its memory file (where it keeps your conversation across restarts) and its log (what'
-    Write-Line '    it found on this PC and how its start went, read back here next time) go in \EFI\chatcomputer-own on'
-    Write-Line '    the partition this PC starts from (about 8 MB). Windows'' own files stay as they are. The conversation is'
-    Write-Line '    kept there as it is, where anyone who can read that partition can read it.'
-    Write-Line ('  * "' + $Script:OwnEntryName + '" stays in the power-on menu (the PC''s boot menu), to choose whenever you like.')
-    if ($bitlocker) {
-        Write-Line '  * BitLocker pauses for two restarts, so the Secure Boot change doesn''t make it ask for its recovery key.'
+    $old = [string](Get-Prop $cert 'FriendlyName') -eq $Script:OldOwnKeyName
+    if ($sb -eq $false) {
+        Write-Good 'Signed with this PC''s own key. (Secure Boot is off, so it starts with any key.)'
+    } elseif ($sb -ne $true) {
+        Write-Good 'Signed with this PC''s own key.'
+    } elseif ($approved -eq $true -and $old) {
+        Write-Good 'Signed with the key this PC approved for ClaudeOS, so Secure Boot lets it start.'
+    } elseif ($approved -eq $true) {
+        Write-Good 'Signed with Chat Computer''s key, which this PC approved, so Secure Boot lets it start.'
+    } else {
+        Write-Line 'Signed with Chat Computer''s key, which this PC hasn''t approved yet.'
+        foreach ($k in $keys) {
+            if ([string](Get-Prop $k 'FriendlyName') -eq $Script:OldOwnKeyName -and (Test-OwnKeyApproved -Cert $k) -eq $false) {
+                Write-Line 'The key it approved for ClaudeOS isn''t on its list any more (updating or resetting the BIOS can clear it).'
+                break
+            }
+        }
     }
-    $installed = Install-OwnFiles -Signed $signed -Certificate $cer -MetaKey $metaKey
+
+    # Its model: the one Chat Computer's app got ready on this PC; Meta's Muse Spark instead only when a key for it
+    # is in the settings (asked for with -Meta, and kept until -Meta again or -Remove).
+    $model = Find-OwnModel
+    $metaKey = ''
+    $dropMeta = $false
+    if ($Meta -and -not $Unattended) {
+        Write-Line 'Meta''s Muse Spark answers over the internet, which needs a network cable on this PC (Wi-Fi isn''t supported'
+        Write-Line 'there yet); what you type goes to Meta. The key is kept on the partition this PC starts from.'
+        $metaKey = Read-OwnMetaKey
+        $dropMeta = -not $metaKey
+    }
+    $bitlocker = $setupScreen -and (Get-BitLockerOn)
+    $installed = Install-OwnFiles -Signed $signed -Certificate $cer -MetaKey $metaKey -DropMetaKey:$dropMeta
     if (-not $installed.Memory) {
         Write-Warn 'Its memory file couldn''t be made on the start-up partition (too little room, or it couldn''t be written), so the conversation won''t be kept across restarts.'
     }
     $id = Get-OwnBootEntry
-    Write-Good ('Chat Computer''s own system is on the start-up partition, and "' + $Script:OwnEntryName + '" is in the power-on menu.')
-
-    if (-not $model -and -not $installed.Meta) {
-        # (Without a model it would start and only say it needs one: it stays in the menu for when it's here, and the
-        # setup screen, if the key needs approving there, comes when this runs again then.)
-        Write-Line ''
-        Write-Line 'Get its model first: install Chat Computer''s app from chatcomputer.ai/get (choose App), and leave it open'
-        Write-Line 'until it says its model is ready. Then double-click this again.'
-        if (-not $NoRestart) {
-            try { Start-Process 'https://chatcomputer.ai/get' } catch { Write-SetupLog ('Opening chatcomputer.ai/get: ' + $_.Exception.Message) }
-        }
-        return
+    Write-Good 'Put on the partition this PC starts from, next to Windows'' own files (which stay as they are).'
+    if ($installed.Meta) {
+        Write-Line 'It answers with Meta''s Muse Spark, which needs a network cable (Wi-Fi isn''t supported there yet).'
+    } elseif ($model) {
+        Write-Line ('It answers with ' + $model.Label + ', on this PC itself: nothing you type leaves it.')
+    } else {
+        Write-Line 'It has no model on this PC yet, so it starts and says how to get one (Chat Computer''s app, from'
+        Write-Line 'chatcomputer.ai/get, gets it).'
     }
 
     if (-not $setupScreen) {
         if ($NoRestart) { return }
-        Invoke-Bcdedit @('/set', '{fwbootmgr}', 'bootsequence', $id)
         Write-Line ''
-        Write-Line 'To come back to Windows: restart (the next start is Windows), or hold the power button until the PC turns off.'
-        Write-Line ('Next time, choose "' + $Script:OwnEntryName + '" in the boot menu as the PC starts (often F12, F11, F8 or Esc).')
-        if (Wait-OwnCountdown 10 -Unattended:$Unattended) {
-            & shutdown.exe /r /t 0
-        } else {
-            Write-Line ('Staying in Windows: it starts at the next restart, once, and whenever you choose it in the boot menu.')
+        Write-Line ('To come back to Windows, restart. To start Chat Computer again, choose "' + $Script:OwnEntryName + '" in the')
+        Write-Line 'boot menu as the PC starts (F12 on many PCs).'
+        if (-not $Unattended) {
+            Clear-OwnKeys
+            $answer = ([string](Read-Host 'Press Enter to start Chat Computer (or close this window to stay in Windows)')).Trim()
+            if ($answer -match '^(?i)n') {
+                Write-SetupLog 'Stayed in Windows'
+                Write-Line 'Staying in Windows.'
+                return
+            }
         }
+        Invoke-Bcdedit @('/set', '{fwbootmgr}', 'bootsequence', $id)
+        Write-SetupLog 'Restarting into Chat Computer'
+        & shutdown.exe /r /t 0
         return
     }
 
-    # (No choice is asked, as its owner asked: "Make everything easy and direct, i dont want to deal with so many
-    # questions just for chat computer to work". Approving the key keeps Secure Boot on, for Windows and for games
-    # whose anti-cheat needs it, and from then on Chat Computer starts from the boot menu every time; turning Secure
-    # Boot off is in the steps, for a PC that can't add a key. Nothing changes before Enter: closing the window
-    # leaves the next start to Windows, and BitLocker as it was.)
+    # (Secure Boot is on, and it doesn't trust any key this PC has: it needs one approval in the PC's setup screen,
+    # which nothing in Windows can do for it. No choice is asked: approving the key keeps Secure Boot on, for Windows
+    # and for games whose anti-cheat needs it; turning Secure Boot off is in the steps, for a PC that can't add a key.
+    # Nothing changes before Enter: closing the window leaves the next start to Windows, and BitLocker as it was.)
     Write-Step 'Once: approve Chat Computer''s key in the PC''s setup screen'
-    Write-Line 'Secure Boot is on and doesn''t know Chat Computer''s key yet, so it stops Chat Computer ("Secure Boot'
-    Write-Line 'Violation"). Approve the key once, and Chat Computer starts from then on, with Secure Boot still on.'
+    Write-Line 'Secure Boot stops Chat Computer until the PC knows its key ("Secure Boot Violation"). Approve it once, and'
+    Write-Line 'from then on Chat Computer starts with Enter here, or from the boot menu, with Secure Boot still on.'
     $maker = ''
     try { $maker = [string](Get-Prop (Get-CimInstance -ClassName Win32_BaseBoard -ErrorAction Stop | Select-Object -First 1) 'Manufacturer') } catch { $null = $_ }
     Write-Line ''
@@ -930,7 +919,7 @@ function Start-OwnSystem {
     if ($bitlocker) {
         try {
             Suspend-BitLocker -MountPoint 'C:' -RebootCount 2 -ErrorAction Stop | Out-Null
-            Write-Good 'BitLocker is paused for two restarts.'
+            Write-Good 'BitLocker is paused for two restarts, so the change doesn''t make it ask for its recovery key.'
         } catch {
             Write-SetupLog ('Suspend-BitLocker: ' + $_.Exception.Message)
             Write-Warn 'BitLocker could not be paused, so Windows may ask for its recovery key once after the change.'
