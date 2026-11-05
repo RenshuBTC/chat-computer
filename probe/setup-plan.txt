@@ -1,0 +1,3 @@
+﻿gap after C: 0, can shrink 2883153920 (layout 4191408128, free space 2883153920)
+in the way: \$Mft::$BITMAP (ntfs)
+
