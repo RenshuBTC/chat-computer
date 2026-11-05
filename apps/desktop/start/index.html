@@ -1,0 +1,52 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Chat Computer</title>
+<link rel="stylesheet" href="../demo/theme.css">
+<link rel="stylesheet" href="start.css">
+</head>
+<body>
+<main id="start">
+  <h1 id="wordmark">Chat Computer</h1>
+
+  <section id="choose" aria-labelledby="ask" hidden>
+    <h2 id="ask">How do you want Chat Computer?</h2>
+    <div id="ways">
+      <button class="way" type="button" data-way="app">
+        <span class="way-name">App</span>
+        <span class="way-what">Chat Computer in a window of its own, on this computer.</span>
+      </button>
+      <button class="way" type="button" data-way="os">
+        <span class="way-name">Its own system</span>
+        <span class="way-what" id="os-what">Chat Computer in place of a desktop when the computer starts. Your system stays, one restart away.</span>
+      </button>
+    </div>
+    <p id="error" role="alert"></p>
+    <p class="later">You can change this later: type / in Chat Computer, or open this app again.</p>
+  </section>
+
+  <section class="panel" id="way-os" aria-labelledby="os-title" hidden>
+    <h2 id="os-title">Chat Computer's own system</h2>
+    <p class="note" id="os-started" hidden>Chat Computer Setup has started.</p>
+    <ol class="steps" data-on="windows">
+      <li>Windows asks whether Chat Computer Setup may make changes: choose <b>Yes</b>.</li>
+      <li>Press <b>Enter</b> to put Chat Computer next to Windows.</li>
+      <li>Restart the PC: Chat Computer starts. To go back to Windows, ask Chat Computer to restart.</li>
+    </ol>
+    <ol class="steps" data-on="mac">
+      <li>Terminal opens with Chat Computer Setup: type <b>y</b> when it asks to go ahead.</li>
+      <li>Restart the Mac when it's done: Chat Computer starts. macOS, your apps and your files stay.</li>
+    </ol>
+    <p>Setup's folder: <code class="folder" id="setup-folder"></code></p>
+    <p class="buttons">
+      <button class="primary" type="button" data-act="os">Start Chat Computer Setup again</button>
+      <button class="second" type="button" data-act="setup-folder">Show its folder</button>
+    </p>
+    <p class="other"><button class="text-button" type="button" data-act="choose">Choose another way</button></p>
+  </section>
+</main>
+<script src="start.js"></script>
+</body>
+</html>
